@@ -1,0 +1,13 @@
+[project]
+name = "sondagginazionali"
+version = "0.1.0"
+description = "Italian polls visualization"
+dependencies = [
+    "python-fasthtml",
+    "pandas",
+    "numpy",
+    "matplotlib",
+    "fh-matplotlib"
+]
+
+

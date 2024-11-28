@@ -1,0 +1,3 @@
+fasthtml
+pandas
+python-dateutil 

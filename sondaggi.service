@@ -1,0 +1,12 @@
+[Unit]
+Description=Sondaggi Nazionali Service
+After=network.target
+
+[Service]
+User=your_username
+WorkingDirectory=/path/to/your/app
+Environment="PATH=/path/to/your/app/venv/bin"
+ExecStart=/path/to/your/app/venv/bin/python server.py
+
+[Install]
+WantedBy=multi-user.target 
