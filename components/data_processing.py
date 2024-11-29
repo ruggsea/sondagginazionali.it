@@ -53,25 +53,24 @@ def prepare_chart_datasets(df, df_weighted_ma, dates, party_config):
         # Line dataset (moving average)
         party_data = {
             'label': abbr,
-            'data': df_weighted_ma[f'{abbr}_MA'].round(2).tolist(),
+            'data': df_weighted_ma[f'{abbr}_MA'].round(1).tolist(),
             'borderColor': config['color'],
             'backgroundColor': config['color'],
             'borderWidth': 1.5,
             'tension': 0.4,
             'fill': False,
             'order': 1,
-            'pointRadius': 0,
-            'pointHoverRadius': 0
+            'pointRadius': 0
         }
         
-        # Scatter points dataset
+        # Scatter points dataset (polls)
         scatter_data = []
         if config['name'] in df.columns:
             for i, value in enumerate(df[config['name']]):
                 if pd.notna(value):
                     scatter_data.append({
                         'x': dates[i],
-                        'y': round(value, 2)
+                        'y': round(value, 1)
                     })
         
         if scatter_data:
@@ -80,16 +79,9 @@ def prepare_chart_datasets(df, df_weighted_ma, dates, party_config):
                 'data': scatter_data,
                 'backgroundColor': config['color'] + '40',
                 'borderColor': 'transparent',
-                'pointRadius': 2.5,
+                'pointRadius': 2,
                 'pointStyle': 'circle',
-                'pointBackgroundColor': config['color'] + '40',
-                'pointBorderColor': 'transparent',
-                'pointHoverRadius': 3.5,
-                'pointHoverBorderWidth': 1,
-                'pointHoverBorderColor': config['color'],
-                'showLine': False,
-                'order': 2,
-                'hidden': False
+                'order': 2
             })
         
         datasets.append(party_data)

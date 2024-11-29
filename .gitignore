@@ -39,3 +39,21 @@ wheels/
 # OS specific files
 .DS_Store
 Thumbs.db 
+
+# Cache files
+cache/
+*.pkl
+
+# Cursor specific
+.cursorrules
+.cursorignore
+
+# Add these lines to .gitignore
+*.json
+
+# Add these lines to your .gitignore
+logs/
+*.json
+
+
+

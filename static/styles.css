@@ -1,0 +1,123 @@
+body { 
+    margin: 0;
+    padding: 0;
+    font-family: system-ui, -apple-system, sans-serif;
+    background-color: #f5f5f5;
+    min-height: 100vh;
+}
+.container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    box-sizing: border-box;
+}
+.title {
+    text-align: center;
+    font-size: 2.25rem;
+    margin-bottom: 2rem;
+    color: #111;
+    font-weight: 700;
+}
+.content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+.chart-card {
+    background: white;
+    border-radius: 0.75rem;
+    padding: 1.5rem 1.5rem 2.5rem 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    height: calc(55vh - 11rem);
+    min-height: 400px;
+}
+.chart-container {
+    position: relative;
+    height: 300px;
+    margin: 1rem 0;
+}
+.summary-card {
+    background: white;
+    border-radius: 0.75rem;
+    padding: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    flex-shrink: 0;
+    max-width: 600px;
+    margin: 0 auto;
+    width: 100%;
+}
+.summary-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    color: #000;
+}
+.party-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 0.4rem 0;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid #eee;
+}
+.party-row:last-child {
+    border-bottom: none;
+}
+.party-name {
+    font-weight: 500;
+    color: #1a1a1a;
+    font-size: 0.95rem;
+}
+.party-value {
+    font-weight: 600;
+    color: #1a1a1a;
+    font-size: 0.95rem;
+}
+.last-update {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    font-size: 0.85rem;
+    color: #444;
+    border-top: 1px solid #eee;
+}
+.footer {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background: white;
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    text-align: center;
+}
+.footer-text {
+    color: #666;
+    font-size: 0.9rem;
+    margin: 0;
+}
+.footer-links {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 0.5rem;
+}
+.footer-link {
+    color: #1a1a1a;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.9rem;
+}
+.footer-link:hover {
+    color: #0066cc;
+}
+.section-title {
+    text-align: center;
+    font-size: 2.25rem;
+    margin: 2rem 0 1.5rem;
+    color: #111;
+    font-weight: 700;
+} 
