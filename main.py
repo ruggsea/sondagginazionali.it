@@ -22,9 +22,13 @@ from components.data_processing import (
     prepare_chart_datasets
 )
 from components.charts import create_chart_scripts
+from routes.about import register_about_routes
+from routes.forecasting import register_forecasting_routes
 
 # Initialize app with static file support
 app, rt = fast_app(static_dir="static")
+register_about_routes(rt)
+register_forecasting_routes(rt)
 
 # Replace the caching logic with Redis
 def get_redis_connection():
@@ -235,7 +239,7 @@ def home(request):
             Title("Sondaggi Politici"),
             Link(rel="icon", type="image/png", href="/static/favicon.png"),
         ),
-        Body(  # Wrap the main content in Body
+        Body(  
             Div(
                 # External resources
                 Link(rel="stylesheet", href="/static/styles.css"),
@@ -245,6 +249,23 @@ def home(request):
                 ),
                 Script(src="https://cdn.jsdelivr.net/npm/chart.js"),
                 Script(src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"),
+                
+                # Navbar
+                Div(
+                    Div(
+                        Div(
+                            A("Expert Forecasting", href="/forecasting", cls="nav-link"),
+                            cls="left-links"
+                        ),
+                        A("Sondaggi Politici", href="/", cls="nav-brand"),
+                        Div(
+                            A("About", href="/about", cls="nav-link"),
+                            cls="right-links"
+                        ),
+                        cls="navbar-content"
+                    ),
+                    cls="navbar"
+                ),
                 
                 # Main content
                 Div(
@@ -304,6 +325,12 @@ def home(request):
                                 "LinkedIn", 
                                 href="https://www.linkedin.com/in/ruggsea/", 
                                 target="_blank",
+                                cls="footer-link"
+                            ),
+                            A(
+                                I(cls="fas fa-info-circle"),
+                                "About",
+                                href="/about",
                                 cls="footer-link"
                             ),
                             cls="footer-links"
