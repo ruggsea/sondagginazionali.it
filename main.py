@@ -236,7 +236,7 @@ def home(request):
 
     return Html(
         Head(
-            Title("Sondaggi Politici"),
+            Title("Sondaggi Nazionali"),
             Link(rel="icon", type="image/png", href="/static/favicon.png"),
         ),
         Body(  
@@ -257,7 +257,7 @@ def home(request):
                             A("Expert Forecasting", href="/forecasting", cls="nav-link"),
                             cls="left-links"
                         ),
-                        A("Sondaggi Politici", href="/", cls="nav-brand"),
+                        A("Sondaggi Nazionali", href="/", cls="nav-brand"),
                         Div(
                             A("About", href="/about", cls="nav-link"),
                             cls="right-links"
@@ -269,7 +269,7 @@ def home(request):
                 
                 # Main content
                 Div(
-                    H1("Sondaggi Politici Italiani", cls="title"),
+                    H1("Sondaggi Nazionali", cls="title"),
                     Div(
                         # Grafico partiti
                         Div(

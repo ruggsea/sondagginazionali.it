@@ -5,7 +5,7 @@ def register_about_routes(rt):
     def about():
         return Html(
             Head(
-                Title("About - Sondaggi Politici"),
+                Title("About"),
                 Link(rel="icon", type="image/png", href="/static/favicon.png"),
                 Link(rel="stylesheet", href="/static/styles.css"),
                 Link(
@@ -24,7 +24,7 @@ def register_about_routes(rt):
                             A("Expert Forecasting", href="/forecasting", cls="nav-link"),
                             cls="left-links"
                         ),
-                        A("Sondaggi Politici", href="/", cls="nav-brand"),
+                        A("Sondaggi Nazionali", href="/", cls="nav-brand"),
                         Div(
                             A("About", href="/about", cls="nav-link"),
                             cls="right-links"
@@ -38,11 +38,11 @@ def register_about_routes(rt):
                 Div(
                     # Main content
                     Div(
-                        H1("About Sondaggi Politici", cls="title"),
+                        H1("About Sondaggi Nazionali", cls="title"),
                         Div(
                             H2("Il Progetto", cls="section-title"),
                             P(
-                                """Sondaggi Politici è un progetto open source che raccoglie e analizza i sondaggi 
+                                """Sondaggi Nazionali è un progetto open source che raccoglie e analizza i sondaggi 
                                 politici italiani. Il progetto si basa su un altro mio strumento, """,
                                 A(
                                     "llm_italian_poll_scraper",

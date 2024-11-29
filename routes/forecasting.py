@@ -5,7 +5,7 @@ def register_forecasting_routes(rt):
     def forecasting():
         return Html(
             Head(
-                Title("Expert Forecasting - Sondaggi Politici"),
+                Title("Expert Forecasting"),
                 Link(rel="icon", type="image/png", href="/static/favicon.png"),
                 Link(rel="stylesheet", href="/static/styles.css"),
                 Link(
@@ -24,7 +24,7 @@ def register_forecasting_routes(rt):
                             A("Expert Forecasting", href="/forecasting", cls="nav-link"),
                             cls="left-links"
                         ),
-                        A("Sondaggi Politici", href="/", cls="nav-brand"),
+                        A("Sondaggi Nazionali", href="/", cls="nav-brand"),
                         Div(
                             A("About", href="/about", cls="nav-link"),
                             cls="right-links"
@@ -37,7 +37,7 @@ def register_forecasting_routes(rt):
                 # Container with main content
                 Div(
                     Div(
-                        H1("Expert Forecasting", cls="title"),
+                        H1("Expert Forecasting - Sondaggi Nazionali", cls="title"),
                         Div(
                             H2("Prediction Markets e Forecasting", cls="section-title"),
                             P("""
