@@ -37,7 +37,7 @@ def register_forecasting_routes(rt):
                 # Container with main content
                 Div(
                     Div(
-                        H1("Expert Forecasting - Sondaggi Nazionali", cls="title"),
+                        H1("Expert Forecasting", cls="title"),
                         Div(
                             H2("Prediction Markets e Forecasting", cls="section-title"),
                             P("""

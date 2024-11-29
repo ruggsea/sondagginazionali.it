@@ -38,7 +38,7 @@ def register_about_routes(rt):
                 Div(
                     # Main content
                     Div(
-                        H1("About Sondaggi Nazionali", cls="title"),
+                        H1("About", cls="title"),
                         Div(
                             H2("Il Progetto", cls="section-title"),
                             P(
