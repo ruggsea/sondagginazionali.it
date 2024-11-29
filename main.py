@@ -1,165 +1,89 @@
 from fasthtml.common import *
-from fasthtml.js import run_js
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from moving_average import calculate_weighted_ma
 import json
 import os
+
+# Import configurations and components
+from config.party_config import PARTY_CONFIG, COALITION_CONFIG
+from components.data_processing import (
+    load_and_preprocess_data,
+    filter_data,
+    prepare_chart_datasets
+)
 
 app, rt = fast_app()
 
 @rt('/')
 def home():
-    # Read polling data from the repo
-    df = pd.read_csv('https://raw.githubusercontent.com/ruggsea/llm_italian_poll_scraper/main/italian_polls.csv')
-    
-    # Convert date column - using Data Inserimento
-    df['date'] = pd.to_datetime(df['Data Inserimento'], format='%d/%m/%Y')
-    
-    # Filter last 3 years
-    three_years_ago = datetime.now() - timedelta(days=3*365)
-    df = df[df['date'] >= three_years_ago]
-    
-    # Sort by date before calculating moving averages
-    df = df.sort_values('date')
+    # Load and process data
+    df, all_party_columns = load_and_preprocess_data()
+    df = filter_data(df, all_party_columns)
+    assert not df.empty, "df is empty"
     
     # Calculate moving averages
-    df = calculate_weighted_ma(df)
+    df_weighted_ma = calculate_weighted_ma(df)
     
-    # Get latest values for debug section
-    latest_date = df['date'].max()
-    latest_values = {
-        'FDI': df[df['date'] == latest_date]['FDI_MA'].iloc[0],
-        'PD': df[df['date'] == latest_date]['PD_MA'].iloc[0],
-        'M5S': df[df['date'] == latest_date]['M5S_MA'].iloc[0],
-        'FI': df[df['date'] == latest_date]['FI_MA'].iloc[0],
-        'LEGA': df[df['date'] == latest_date]['LEGA_MA'].iloc[0],
-        'AVS': df[df['date'] == latest_date]['AVS_MA'].iloc[0],
-    }
-    
-    # Create debug text
-    debug_text = f"""
-    Media di oggi ({latest_date.strftime('%d/%m/%Y')})
-    Fratelli d'Italia: {latest_values['FDI']:.2f}%
-    Partito Democratico: {latest_values['PD']:.2f}%
-    Movimento 5 Stelle: {latest_values['M5S']:.2f}%
-    Forza Italia: {latest_values['FI']:.2f}%
-    Lega: {latest_values['LEGA']:.2f}%
-    Alleanza Verdi Sinistra: {latest_values['AVS']:.2f}%
-    """
-    
-    # Define party names and colors
-    party_config = {
-        'FDI': {'name': "Fratelli d'Italia", 'color': '#0066CC'},
-        'PD': {'name': 'Partito Democratico', 'color': '#FF0000'},
-        'M5S': {'name': 'Movimento 5 Stelle', 'color': '#FFD700'},
-        'FI': {'name': 'Forza Italia', 'color': '#00BFFF'},
-        'LEGA': {'name': 'Lega', 'color': '#004225'},
-        'AVS': {'name': 'Alleanza Verdi Sinistra', 'color': '#00B050'}
-    }
-    
-    # Function to normalize poll data
-    def normalize_poll_row(row, party_names):
-        total = sum(row[name] for name in party_names if pd.notna(row[name]))
-        if total == 0:
-            return row
-        for name in party_names:
-            if pd.notna(row[name]):
-                row[name] = (row[name] / total) * 100
-        return row
-
-    # Get list of party full names
-    party_names = [config['name'] for config in party_config.values()]
-    
-    # Normalize individual poll data
-    df_normalized = df.copy()
-    df_normalized = df_normalized.apply(
-        lambda row: normalize_poll_row(row, party_names), 
-        axis=1
-    )
-    
-    # Recalculate moving averages with normalized data
-    df_normalized = calculate_weighted_ma(df_normalized)
-    
-    # Update latest values with normalized data
-    latest_date = df_normalized['date'].max()
-    latest_values = {
-        'FDI': df_normalized[df_normalized['date'] == latest_date]['FDI_MA'].iloc[0],
-        'PD': df_normalized[df_normalized['date'] == latest_date]['PD_MA'].iloc[0],
-        'M5S': df_normalized[df_normalized['date'] == latest_date]['M5S_MA'].iloc[0],
-        'FI': df_normalized[df_normalized['date'] == latest_date]['FI_MA'].iloc[0],
-        'LEGA': df_normalized[df_normalized['date'] == latest_date]['LEGA_MA'].iloc[0],
-        'AVS': df_normalized[df_normalized['date'] == latest_date]['AVS_MA'].iloc[0],
-    }
-    
-    # Prepare data for Chart.js using normalized data
-    dates = df_normalized['date'].dt.strftime('%Y-%m-%d').tolist()
-    datasets = []
-    
-    for abbr, config in party_config.items():
-        # Line dataset (moving average)
-        party_data = {
-            'label': abbr,
-            'data': df_normalized[f'{abbr}_MA'].round(2).tolist(),
-            'borderColor': config['color'],
-            'backgroundColor': config['color'],
-            'borderWidth': 1.5,
-            'tension': 0.4,
-            'fill': False,
-            'order': 1,
-            'pointRadius': 0,  # Remove points from the line
-            'pointHoverRadius': 0  # Remove hover points from the line
-        }
-        
-        # Scatter points dataset (actual polls)
-        scatter_data = []
-        if config['name'] in df_normalized.columns:
-            for i, value in enumerate(df_normalized[config['name']]):
-                if pd.notna(value):
-                    scatter_data.append({
-                        'x': dates[i],
-                        'y': round(value, 2)
-                    })
-        
-        # Add scatter points first (so they appear under the lines)
-        if scatter_data:
-            datasets.append({
-                'label': f'{abbr} (polls)',
-                'data': scatter_data,
-                'backgroundColor': config['color'] + '40',
-                'borderColor': 'transparent',
-                'pointRadius': 2.5,
-                'pointStyle': 'circle',
-                'pointBackgroundColor': config['color'] + '40',
-                'pointBorderColor': 'transparent',
-                'pointHoverRadius': 3.5,
-                'pointHoverBorderWidth': 1,
-                'pointHoverBorderColor': config['color'],
-                'showLine': False,
-                'order': 2,
-                'hidden': False
-            })
-        
-        # Add the line dataset after scatter points
-        datasets.append(party_data)
-
-    # Format the current date in Italian
+    # Get latest values and dates
+    latest_date = df_weighted_ma['date'].max()
+    latest_values = df_weighted_ma.iloc[-1]
+    dates = df['date'].dt.strftime('%Y-%m-%d').tolist()
     today = datetime.now()
     today_str = today.strftime('%d/%m/%Y')
+
+    # Get list of party full names
+    party_names = [config['name'] for config in PARTY_CONFIG.values()]
+    
+    party_config = PARTY_CONFIG
+    
+    # Prepare data for Chart.js using normalized data
+    datasets = prepare_chart_datasets(df, df_weighted_ma, dates, party_config)
     
     # Format the debug text in a more presentable way
     info_text = f"""
     Oggi è il {today_str}. La media dei sondaggi è la seguente:
 
-    Fratelli d'Italia: {latest_values['FDI']:.1f}%
-    Partito Democratico: {latest_values['PD']:.1f}%
-    Movimento 5 Stelle: {latest_values['M5S']:.1f}%
-    Forza Italia: {latest_values['FI']:.1f}%
-    Lega: {latest_values['LEGA']:.1f}%
-    Alleanza Verdi Sinistra: {latest_values['AVS']:.1f}%
+    Fratelli d'Italia: {latest_values['FDI_MA']:.1f}%
+    Partito Democratico: {latest_values['PD_MA']:.1f}%
+    Movimento 5 Stelle: {latest_values['M5S_MA']:.1f}%
+    Forza Italia: {latest_values['FI_MA']:.1f}%
+    Lega: {latest_values['LEGA_MA']:.1f}%
+    Alleanza Verdi Sinistra: {latest_values['AVS_MA']:.1f}%
 
     Ultimo sondaggio raccolto: {latest_date.strftime('%d/%m/%Y')}
     """
+
+    # Calculate coalition values
+    coalition_data = {}
+    for date in df_weighted_ma['date']:
+        row = df_weighted_ma[df_weighted_ma['date'] == date].iloc[0]
+        for coalition, config in COALITION_CONFIG.items():
+            value = sum(row[f'{party}_MA'] for party in config['parties'] if f'{party}_MA' in row)
+            if coalition not in coalition_data:
+                coalition_data[coalition] = []
+            coalition_data[coalition].append(round(value, 1))
+
+    # Prepare coalition datasets
+    coalition_datasets = []
+    for coalition, config in COALITION_CONFIG.items():
+        coalition_datasets.append({
+            'label': coalition,
+            'data': coalition_data[coalition],
+            'borderColor': config['color'],
+            'backgroundColor': config['color'],
+            'borderWidth': 2,
+            'tension': 0.4,
+            'fill': False,
+            'pointRadius': 0
+        })
+
+    # Calculate latest coalition values
+    latest_coalition_values = {}
+    latest_row = df_weighted_ma.iloc[-1]
+    for coalition, config in COALITION_CONFIG.items():
+        value = sum(latest_row[f'{party}_MA'] for party in config['parties'] if f'{party}_MA' in latest_row)
+        latest_coalition_values[coalition] = round(value, 1)
 
     # Update the style to make the info section look better
     return Div(
@@ -170,56 +94,188 @@ def home():
             body { 
                 margin: 0;
                 padding: 20px;
-                font-family: Arial, sans-serif;
+                font-family: system-ui, -apple-system, sans-serif;
                 background-color: #f5f5f5;
+                min-height: 100vh;
             }
             .container {
-                max-width: 1200px;
+                max-width: 1000px;
                 margin: 0 auto;
-                padding: 20px;
-                background-color: white;
-                border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                padding: 2rem;
+                display: flex;
+                flex-direction: column;
+                min-height: 100vh;
             }
             .title {
                 text-align: center;
-                font-size: 24px;
-                margin-bottom: 20px;
-                color: #333;
-                font-weight: bold;
+                font-size: 2.25rem;
+                margin-bottom: 2rem;
+                color: #111;
+                font-weight: 700;
+            }
+            .content {
+                flex-grow: 1;
+                display: flex;
+                flex-direction: column;
+                gap: 1.5rem;
+            }
+            .chart-card {
+                background: white;
+                border-radius: 0.75rem;
+                padding: 1.5rem 1.5rem 2.5rem 1.5rem;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                height: calc(55vh - 11rem);
+                min-height: 400px;
             }
             .chart-container {
                 position: relative;
-                height: 60vh;
-                width: 90%;
-                margin: 0 auto 20px auto;
-                padding: 0 20px;
+                height: 100%;
+                width: 100%;
+                margin-bottom: 2rem;
             }
-            .info-section {
-                margin-top: 20px;
-                padding: 20px;
-                background-color: #f8f9fa;
-                border-radius: 8px;
-                font-family: 'Segoe UI', Arial, sans-serif;
-                white-space: pre-line;
-                color: #333;
-                line-height: 1.6;
+            .summary-card {
+                background: white;
+                border-radius: 0.75rem;
+                padding: 0.75rem;
                 box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                flex-shrink: 0;
+                max-width: 600px;
+                margin: 0 auto;
+                width: 100%;
             }
-            .info-section strong {
-                color: #000;
+            .summary-title {
+                font-size: 1.1rem;
                 font-weight: 600;
+                margin-bottom: 0.75rem;
+                color: #000;
+            }
+            .party-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin: 0.4rem 0;
+                padding: 0.3rem 0;
+                border-bottom: 1px solid #eee;
+            }
+            .party-row:last-child {
+                border-bottom: none;
+            }
+            .party-name {
+                font-weight: 500;
+                color: #1a1a1a;
+                font-size: 0.95rem;
+            }
+            .party-value {
+                font-weight: 600;
+                color: #1a1a1a;
+                font-size: 0.95rem;
+            }
+            .last-update {
+                margin-top: 0.75rem;
+                padding-top: 0.75rem;
+                font-size: 0.85rem;
+                color: #444;
+                border-top: 1px solid #eee;
+            }
+            .footer {
+                margin-top: 2rem;
+                padding: 1.5rem;
+                background: white;
+                border-radius: 0.75rem;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                text-align: center;
+            }
+            .footer-text {
+                color: #666;
+                font-size: 0.9rem;
+                margin: 0;
+            }
+            .footer-links {
+                display: flex;
+                gap: 1rem;
+                justify-content: center;
+                margin-top: 0.5rem;
+            }
+            .footer-link {
+                color: #1a1a1a;
+                text-decoration: none;
+                display: flex;
+                align-items: center;
+                gap: 0.25rem;
+                font-size: 0.9rem;
+            }
+            .footer-link:hover {
+                color: #0066cc;
             }
         """),
         
         Div(
-            H1("Media Sondaggi Nazionali", cls="title"),
+            H1("Sondaggi Politici Italiani", cls="title"),
             Div(
-                Canvas(id="pollChart"),
-                cls="chart-container"
+                # Grafico partiti
+                Div(
+                    Canvas(id="pollChart"),
+                    cls="chart-card chart-container"
+                ),
+                # Riepilogo partiti
+                Div(
+                    P(f"Oggi è il {today_str}. La media dei sondaggi è la seguente:", cls="summary-title"),
+                    *[
+                        Div(
+                            Span(f"{party_config[abbr]['name']}:", cls="party-name"),
+                            Span(f"{latest_values[abbr]:.1f}%", cls="party-value"),
+                            cls="party-row"
+                        ) for abbr in party_config
+                    ],
+                    P(f"Ultimo sondaggio raccolto: {latest_date.strftime('%d/%m/%Y')}", cls="last-update"),
+                    cls="summary-card"
+                ),
+                # Grafico coalizioni
+                Div(
+                    Canvas(id="coalitionChart"),
+                    cls="chart-card chart-container"
+                ),
+                # Riepilogo coalizioni
+                Div(
+                    P("Media delle coalizioni:", cls="summary-title"),
+                    *[
+                        Div(
+                            Span(f"{coalition}:", cls="party-name"),
+                            Span(f"{value:.1f}%", cls="party-value"),
+                            cls="party-row"
+                        ) for coalition, value in latest_coalition_values.items()
+                    ],
+                    cls="summary-card"
+                ),
+                cls="content"
             ),
-            Div(info_text, cls="info-section"),  # Changed from debug-section to info-section
+            Div(
+                P("Sviluppato da Ruggero Marino Lazzaroni", cls="footer-text"),
+                Div(
+                    A(
+                        I(cls="fab fa-twitter"), 
+                        "Twitter", 
+                        href="https://twitter.com/ruggsea", 
+                        target="_blank",
+                        cls="footer-link"
+                    ),
+                    A(
+                        I(cls="fab fa-linkedin"), 
+                        "LinkedIn", 
+                        href="https://www.linkedin.com/in/ruggsea/", 
+                        target="_blank",
+                        cls="footer-link"
+                    ),
+                    cls="footer-links"
+                ),
+                cls="footer"
+            ),
             cls="container"
+        ),
+        
+        Link(
+            rel="stylesheet",
+            href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"
         ),
         
         Script("""
@@ -239,22 +295,26 @@ def home():
                     },
                     "plugins": {
                         "legend": {
-                            "position": "right",
+                            "position": "bottom",
                             "labels": {
                                 "usePointStyle": True,
-                                "padding": 15
-                            }
-                        },
-                        "title": {
-                            "display": False
+                                "padding": 20,
+                                "boxWidth": 30,
+                                "font": {
+                                    "family": "system-ui, -apple-system, sans-serif",
+                                    "size": 13
+                                }
+                            },
+                            "align": "center",
+                            "maxHeight": 50
                         }
                     },
                     "layout": {
                         "padding": {
+                            "top": 30,
+                            "bottom": 30,
                             "left": 15,
-                            "right": 30,
-                            "top": 10,
-                            "bottom": 10
+                            "right": 15
                         }
                     },
                     "scales": {
@@ -263,65 +323,33 @@ def home():
                             "time": {
                                 "unit": "month",
                                 "displayFormats": {
-                                    "month": "MM/yy"
+                                    "month": "MMM yy"
                                 }
                             },
                             "grid": {
                                 "display": True,
-                                "drawOnChartArea": True,
-                                "drawTicks": True,
                                 "color": "rgba(0,0,0,0.1)"
                             },
                             "ticks": {
-                                "maxRotation": 45,
-                                "minRotation": 45,
-                                "source": "auto",
-                                "autoSkip": True,
-                                "maxTicksLimit": 12
-                            },
-                            "border": {
-                                "display": True
+                                "font": {
+                                    "family": "system-ui, -apple-system, sans-serif"
+                                }
                             }
                         },
                         "y": {
                             "min": 0,
                             "max": 50,
-                            "grid": {
-                                "display": True,
-                                "drawBorder": True,
-                                "color": "rgba(0,0,0,0.1)",
-                                "lineWidth": 1
-                            },
-                            "border": {
-                                "display": True,
-                                "color": "rgba(0,0,0,0.3)"
-                            },
                             "ticks": {
-                                "display": True,
-                                "stepSize": 10,
+                                "stepSize": 5,
+                                "padding": 10,
+                                "callback": "function(value) { return value + '%' }",
                                 "font": {
+                                    "family": "system-ui, -apple-system, sans-serif",
                                     "size": 12
-                                },
-                                "padding": 8,
-                                "color": "rgba(0,0,0,0.7)",
-                                "major": {
-                                    "enabled": True
-                                },
-                                "align": "center",
-                                "crossAlign": "center",
-                                "z": 1
-                            },
-                            "display": True,
-                            "position": "left",
-                            "beginAtZero": True,
-                            "title": {
-                                "display": True,
-                                "text": "Percentuale (%)",
-                                "color": "rgba(0,0,0,0.7)",
-                                "font": {
-                                    "size": 14,
-                                    "weight": "normal"
                                 }
+                            },
+                            "grid": {
+                                "color": "rgba(0,0,0,0.1)"
                             }
                         }
                     }
@@ -338,23 +366,145 @@ def home():
                 return !item.text.endsWith('(polls)');
             };
             
-            // Update tooltip date format
+            // Update tooltip configuration to match coalition style
             chartConfig.options.plugins.tooltip = {
                 callbacks: {
                     title: function(context) {
-                        const date = new Date(context[0].label);
-                        const day = String(date.getDate()).padStart(2, '0');
-                        const month = String(date.getMonth() + 1).padStart(2, '0');
-                        const year = String(date.getFullYear()).slice(2);
-                        return day + '/' + month + '/' + year;
+                        const point = context[0];
+                        let date;
+                        
+                        if (point.raw && point.raw.x) {
+                            date = point.raw.x;
+                        } else {
+                            date = chartConfig.data.labels[point.dataIndex];
+                        }
+                        
+                        if (!date) return 'Data non disponibile';
+                        
+                        // Format date as dd/mm/yyyy
+                        const dateObj = new Date(date);
+                        return dateObj.toLocaleDateString('it-IT', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric'
+                        });
                     },
                     label: function(context) {
-                        return context.dataset.label + ': ' + context.parsed.y.toFixed(1) + '%';
+                        const value = context.parsed.y;
+                        if (!value || context.dataset.label.includes('(polls)')) return null;
+                        return `${context.dataset.label}: ${value.toFixed(1)}%`;
                     }
+                },
+                backgroundColor: 'rgba(255, 255, 255, 0.98)',
+                titleColor: '#000',
+                titleAlign: 'center',
+                titleMarginBottom: 6,
+                bodyColor: '#666',
+                bodySpacing: 4,
+                padding: 10,
+                borderColor: 'rgba(0, 0, 0, 0.1)',
+                borderWidth: 1,
+                displayColors: true,
+                cornerRadius: 4,
+                bodyFont: {
+                    family: 'system-ui, -apple-system, sans-serif',
+                    size: 13
+                },
+                titleFont: {
+                    family: 'system-ui, -apple-system, sans-serif',
+                    weight: 'bold',
+                    size: 14
                 }
             };
             
             new Chart(ctx, chartConfig);
+            
+            // Coalition chart with matching tooltip style
+            const coalitionCtx = document.getElementById('coalitionChart').getContext('2d');
+            const coalitionConfig = {
+                type: 'line',
+                data: {
+                    labels: """ + json.dumps(dates) + """,
+                    datasets: """ + json.dumps(coalition_datasets) + """
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Coalizioni',
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            padding: {
+                                top: 10,
+                                bottom: 30
+                            }
+                        },
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20,
+                                boxWidth: 30,
+                                font: {
+                                    family: 'system-ui, -apple-system, sans-serif',
+                                    size: 13
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(context) {
+                                    const date = context[0].label;
+                                    if (!date) return 'Data non disponibile';
+                                    
+                                    // Format date as dd/mm/yyyy
+                                    const dateObj = new Date(date);
+                                    return dateObj.toLocaleDateString('it-IT', {
+                                        day: '2-digit',
+                                        month: '2-digit',
+                                        year: 'numeric'
+                                    });
+                                },
+                                label: function(context) {
+                                    const value = context.parsed.y;
+                                    if (!value) return null;
+                                    return `${context.dataset.label}: ${value.toFixed(1)}%`;
+                                }
+                            },
+                            backgroundColor: 'rgba(255, 255, 255, 0.98)',
+                            titleColor: '#000',
+                            titleAlign: 'center',
+                            titleMarginBottom: 6,
+                            bodyColor: '#666',
+                            bodySpacing: 4,
+                            padding: 10,
+                            borderColor: 'rgba(0, 0, 0, 0.1)',
+                            borderWidth: 1,
+                            displayColors: true,
+                            cornerRadius: 4,
+                            bodyFont: {
+                                family: 'system-ui, -apple-system, sans-serif',
+                                size: 13
+                            },
+                            titleFont: {
+                                family: 'system-ui, -apple-system, sans-serif',
+                                weight: 'bold',
+                                size: 14
+                            }
+                        }
+                    }
+                }
+            };
+            
+            new Chart(coalitionCtx, coalitionConfig);
         """)
     )
 

@@ -2,46 +2,32 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 
-def calculate_weighted_ma(df, span=10):
-    """
-    Calculate exponentially weighted moving average (EWMA) for each party
+def calculate_weighted_ma(df):
+    # Create a copy of the dataframe to store moving averages
+    df_ma = df.copy()
     
-    Parameters:
-    -----------
-    df : pandas.DataFrame
-        DataFrame containing polling data
-    span : int
-        Span parameter for exponential weighting (default: 10)
-        
-    Returns:
-    --------
-    pandas.DataFrame
-        DataFrame with EWMA values and original columns
-    """
-    # List of main parties and their abbreviations
+    # Define the mapping of full names to abbreviations
     party_mapping = {
         "Fratelli d'Italia": 'FDI',
         'Partito Democratico': 'PD',
         'Movimento 5 Stelle': 'M5S',
         'Forza Italia': 'FI',
         'Lega': 'LEGA',
-        'Alleanza Verdi Sinistra': 'AVS'
+        'Alleanza Verdi Sinistra': 'AVS',
+        '+Europa': '+Europa',
+        'Azione': 'Azione',
+        'Italia Viva': 'Italia Viva',
+        'Altri': 'Altri'
     }
     
-    # Keep original columns for scatter plot
-    result_df = df[['date'] + list(party_mapping.keys())].copy()
+    times=pd.DatetimeIndex(df['date'])
     
-    # Calculate EWMA for each party separately without normalization first
-    for party, abbr in party_mapping.items():
-        ma_col = f'{abbr}_MA'
-        result_df[ma_col] = df[party].ewm(span=span, adjust=False).mean()
-    
-    # Get MA columns
-    ma_columns = [col for col in result_df.columns if col.endswith('_MA')]
-    
-    # Now normalize the MA columns
-    ma_sum = result_df[ma_columns].sum(axis=1)
-    for col in ma_columns:
-        result_df[col] = result_df[col] * 100 / ma_sum
-    
-    return result_df
+    # Calculate weighted moving average for each party
+    for party_name, party_abbr in party_mapping.items():
+        if party_name in df.columns:
+            values=df[party_name].ewm(halflife="14d", times=times).mean()
+            # Store the moving average in the new dataframe
+            df_ma[f'{party_abbr}_MA'] = values
+    # rename the columns
+    df_ma.rename(columns=party_mapping, inplace=True)
+    return df_ma
