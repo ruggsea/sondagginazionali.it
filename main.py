@@ -236,8 +236,38 @@ def home(request):
 
     return Html(
         Head(
-            Title("Sondaggi Nazionali"),
+            # Basic meta tags
+            Meta(charset="UTF-8"),
+            Meta(name="viewport", content="width=device-width, initial-scale=1.0"),
+            Meta(name="description", content="Sondaggi politici italiani aggiornati quotidianamente. Media ponderata dei sondaggi e analisi delle tendenze elettorali in Italia."),
+            Meta(name="keywords", content="sondaggi politici, sondaggi elettorali, media sondaggi, politica italiana, intenzioni di voto"),
+            Meta(name="robots", content="index, follow"),
+            Meta(http_equiv="content-language", content="it"),
+            
+            # Open Graph tags
+            Meta(property="og:title", content="Sondaggi Nazionali | Media Sondaggi Politici Italiani"),
+            Meta(property="og:description", content="Media ponderata dei sondaggi politici italiani aggiornata quotidianamente. Analisi delle tendenze elettorali in Italia."),
+            Meta(property="og:image", content="https://sondagginazionali.it/static/og-image.png"),
+            Meta(property="og:url", content="https://sondagginazionali.it"),
+            Meta(property="og:type", content="website"),
+            
+            # Twitter Card tags
+            Meta(name="twitter:card", content="summary_large_image"),
+            Meta(name="twitter:site", content="@ruggsea"),
+            Meta(name="twitter:title", content="Sondaggi Nazionali | Media Sondaggi Politici Italiani"),
+            Meta(name="twitter:description", content="Media ponderata dei sondaggi politici italiani aggiornata quotidianamente."),
+            Meta(name="twitter:image", content="https://sondagginazionali.it/static/og-image.png"),
+            
+            # Canonical URL
+            Link(rel="canonical", href="https://www.sondagginazionali.it"),
+            
+            Title("Sondaggi Nazionali | Media Sondaggi Politici Italiani"),
             Link(rel="icon", type="image/png", href="/static/favicon.png"),
+            Link(rel="stylesheet", href="/static/styles.css"),
+            Link(
+                rel="stylesheet",
+                href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"
+            ),
         ),
         Body(  
             Div(
@@ -345,6 +375,22 @@ def home(request):
             )
         )
     )
+
+@rt('/robots.txt')
+def get_robots():
+    with open("static/robots.txt", "r") as f:
+        return Response(
+            f.read(), 
+            headers={"Content-Type": "text/plain"}
+        )
+
+@rt('/sitemap.xml')
+def get_sitemap():
+    with open("static/sitemap.xml", "r") as f:
+        return Response(
+            f.read(), 
+            headers={"Content-Type": "application/xml"}
+        )
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

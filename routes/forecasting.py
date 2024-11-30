@@ -1,4 +1,4 @@
-from fasthtml.common import Html, Head, Body, Title, Link, Div, A, H1, H2, P, Script
+from fasthtml.common import Html, Head, Body, Title, Link, Div, A, H1, H2, P, Script, Meta, Header, Main, Footer
 
 def register_forecasting_routes(rt):
     @rt('/forecasting')
