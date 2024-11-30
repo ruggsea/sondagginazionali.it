@@ -6,8 +6,8 @@ dependencies = [
     "python-fasthtml",
     "pandas",
     "numpy",
-    "matplotlib",
-    "fh-matplotlib"
+    "redis",
+    "python-dateutil"
 ]
 
 

@@ -5,6 +5,16 @@ def register_forecasting_routes(rt):
     def forecasting():
         return Html(
             Head(
+                Meta(charset="UTF-8"),
+                Meta(name="viewport", content="width=device-width, initial-scale=1.0"),
+                Meta(name="description", content="Expert forecasting e prediction markets per le elezioni politiche italiane."),
+                
+                Meta(property="og:title", content="Expert Forecasting | Sondaggi Nazionali"),
+                Meta(property="og:description", content="Expert forecasting e prediction markets per le elezioni politiche italiane."),
+                Meta(property="og:image", content="https://sondagginazionali.it/static/og-image.png"),
+                Meta(property="og:url", content="https://sondagginazionali.it/forecasting"),
+                Meta(property="og:type", content="website"),
+                
                 Title("Expert Forecasting"),
                 Link(rel="icon", type="image/png", href="/static/favicon.png"),
                 Link(rel="stylesheet", href="/static/styles.css"),
