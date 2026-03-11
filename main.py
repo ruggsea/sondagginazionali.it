@@ -3,6 +3,7 @@ import pandas as pd
 from moving_average import calculate_weighted_ma
 import json
 import os
+import uuid
 from fasthtml.common import Response
 from fasthtml.common import Head
 from utils.logger import log_visit
@@ -23,7 +24,7 @@ from routes.about import register_about_routes
 from routes.forecasting import register_forecasting_routes
 
 # Initialize app with static file support
-app, rt = fast_app(static_dir="static", secret_key=os.environ.get("SECRET_KEY"))
+app, rt = fast_app(static_dir="static", secret_key=os.environ.get("SECRET_KEY", str(uuid.uuid4())))
 register_about_routes(rt)
 register_forecasting_routes(rt)
 
