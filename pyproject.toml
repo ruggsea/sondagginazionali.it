@@ -2,6 +2,7 @@
 name = "sondagginazionali"
 version = "0.1.0"
 description = "Italian polls visualization"
+requires-python = ">=3.10"
 dependencies = [
     "python-fasthtml",
     "pandas",

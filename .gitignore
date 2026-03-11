@@ -48,6 +48,9 @@ cache/
 .cursorrules
 .cursorignore
 
+# Session secret key
+.sesskey
+
 # Add these lines to .gitignore
 *.json
 
