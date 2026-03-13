@@ -84,6 +84,10 @@ def convert_df_to_cacheable(df):
         for _, row in df.iterrows()
     ]
 
+@rt('/health')
+def health():
+    return "ok"
+
 @rt('/')
 def home(request):
     cache_start_time = time.time()
