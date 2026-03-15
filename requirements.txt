@@ -1,5 +1,5 @@
 python-fasthtml
 pandas
-python-dateutil 
+numpy
+python-dateutil
 redis
-

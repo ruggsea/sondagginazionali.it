@@ -1,16 +1,13 @@
 from fasthtml.common import *
 import pandas as pd
-from datetime import datetime
 from moving_average import calculate_weighted_ma
 import json
 import os
 import uuid
 from fasthtml.common import Response
 from fasthtml.common import Head
-from utils.cache_manager import load_from_cache, cache_data
 from utils.logger import log_visit
 import redis
-from urllib.parse import urlparse
 import time
 from datetime import datetime, timedelta
 import zlib
@@ -27,7 +24,7 @@ from routes.about import register_about_routes
 from routes.forecasting import register_forecasting_routes
 
 # Initialize app with static file support
-app, rt = fast_app(static_dir="static", secret_key=os.environ.get("SECRET_KEY", str(uuid.uuid4())))
+app, rt = fast_app(static_path="static", secret_key=os.environ.get("SECRET_KEY", str(uuid.uuid4())))
 register_about_routes(rt)
 register_forecasting_routes(rt)
 
@@ -270,14 +267,9 @@ def home(request):
                 href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"
             ),
         ),
-        Body(  
+        Body(
             Div(
                 # External resources
-                Link(rel="stylesheet", href="/static/styles.css"),
-                Link(
-                    rel="stylesheet",
-                    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"
-                ),
                 Script(src="https://cdn.jsdelivr.net/npm/chart.js"),
                 Script(src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"),
                 
