@@ -385,6 +385,4 @@ def get_sitemap():
             headers={"Content-Type": "application/xml"}
         )
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    serve(host="0.0.0.0", port=port) 
+serve()
