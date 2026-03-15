@@ -1,230 +1,241 @@
-import traceback
-import sys
+from fasthtml.common import *
+import pandas as pd
+from moving_average import calculate_weighted_ma
+import json
 import os
 import uuid
+from fasthtml.common import Response
+from fasthtml.common import Head
+from utils.logger import log_visit
+import redis
+import time
+from datetime import datetime, timedelta
+import zlib
 
-_init_error = None
-try:
-    from fasthtml.common import *
-    import pandas as pd
-    from moving_average import calculate_weighted_ma
-    import json
-    from fasthtml.common import Response
-    from fasthtml.common import Head
-    from utils.logger import log_visit
-    import redis
-    import time
-    from datetime import datetime, timedelta
-    import zlib
+# Import configurations and components
+from config.party_config import PARTY_CONFIG, COALITION_CONFIG
+from components.data_processing import (
+    load_and_preprocess_data,
+    filter_data,
+    prepare_chart_datasets
+)
+from components.charts import create_chart_scripts
+from routes.about import register_about_routes
+from routes.forecasting import register_forecasting_routes
 
-    from config.party_config import PARTY_CONFIG, COALITION_CONFIG
-    from components.data_processing import (
-        load_and_preprocess_data,
-        filter_data,
-        prepare_chart_datasets
-    )
-    from components.charts import create_chart_scripts
-    from routes.about import register_about_routes
-    from routes.forecasting import register_forecasting_routes
+# Initialize app with static file support
+app, rt = fast_app(static_path="static", secret_key=os.environ.get("SECRET_KEY", str(uuid.uuid4())))
+register_about_routes(rt)
+register_forecasting_routes(rt)
 
-    app, rt = fast_app(static_path="static", secret_key=os.environ.get("SECRET_KEY", str(uuid.uuid4())))
-    register_about_routes(rt)
-    register_forecasting_routes(rt)
+# Redis caching
+def get_redis_connection():
+    redis_url = os.environ.get('REDIS_URL')
+    if not redis_url:
+        return None
+    try:
+        if redis_url.startswith('redis://'):
+            redis_url = redis_url.replace('redis://', 'rediss://', 1)
+        return redis.from_url(redis_url, decode_responses=False)
+    except Exception as e:
+        print(f"Redis connection error: {e}")
+        return None
 
-    def get_redis_connection():
-        redis_url = os.environ.get('REDIS_URL')
-        if not redis_url:
-            return None
-        try:
-            if redis_url.startswith('redis://'):
-                redis_url = redis_url.replace('redis://', 'rediss://', 1)
-            return redis.from_url(redis_url, decode_responses=False)
-        except Exception as e:
-            print(f"Redis connection error: {e}")
-            return None
+def compress_json(data):
+    return zlib.compress(json.dumps(data).encode())
 
-    def compress_json(data):
-        return zlib.compress(json.dumps(data).encode())
+def decompress_json(data):
+    return json.loads(zlib.decompress(data).decode())
 
-    def decompress_json(data):
-        return json.loads(zlib.decompress(data).decode())
+def store_in_redis(redis_client, key, data, expiry=3600):
+    try:
+        compressed = compress_json(data)
+        redis_client.setex(key, expiry, compressed)
+        return True
+    except Exception as e:
+        print(f"Error storing {key}: {e}")
+        return False
 
-    def store_in_redis(redis_client, key, data, expiry=3600):
-        try:
-            compressed = compress_json(data)
-            redis_client.setex(key, expiry, compressed)
-            return True
-        except Exception as e:
-            print(f"Error storing {key}: {e}")
-            return False
+def get_from_redis(redis_client, key):
+    try:
+        data = redis_client.get(key)
+        if data:
+            return decompress_json(data)
+        return None
+    except Exception as e:
+        print(f"Error retrieving {key}: {e}")
+        return None
 
-    def get_from_redis(redis_client, key):
-        try:
-            data = redis_client.get(key)
-            if data:
-                return decompress_json(data)
-            return None
-        except Exception as e:
-            print(f"Error retrieving {key}: {e}")
-            return None
-
-    def convert_df_to_cacheable(df):
-        return [
-            {
-                'date': row['date'].strftime('%Y-%m-%d'),
-                **{
-                    col: (
-                        float(val)
-                        if not pd.isna(val) and not isinstance(val, (str, pd.Timestamp))
-                        else str(val) if not pd.isna(val) else None
-                    )
-                    for col, val in row.items()
-                    if col != 'date'
-                }
+def convert_df_to_cacheable(df):
+    """Convert Pandas DataFrame to simple Python structures"""
+    return [
+        {
+            'date': row['date'].strftime('%Y-%m-%d'),
+            **{
+                col: (
+                    float(val)
+                    if not pd.isna(val) and not isinstance(val, (str, pd.Timestamp))
+                    else str(val) if not pd.isna(val) else None
+                )
+                for col, val in row.items()
+                if col != 'date'
             }
-            for _, row in df.iterrows()
-        ]
+        }
+        for _, row in df.iterrows()
+    ]
 
-    @rt('/')
-    def home(request):
-        log_visit({'request': request, 'headers': dict(request.headers)})
-        redis_client = get_redis_connection()
-        df = df_weighted_ma = all_party_columns = None
+@rt('/')
+def home(request):
+    log_visit({'request': request, 'headers': dict(request.headers)})
 
+    # Try Redis cache
+    redis_client = get_redis_connection()
+    df = df_weighted_ma = all_party_columns = None
+
+    if redis_client:
+        try:
+            metadata = get_from_redis(redis_client, 'polls:metadata')
+            if metadata:
+                all_party_columns = set(metadata['party_columns'])
+                raw_data = get_from_redis(redis_client, 'polls:raw_data')
+                ma_data = get_from_redis(redis_client, 'polls:ma_data')
+                if raw_data and ma_data:
+                    df = pd.DataFrame(raw_data)
+                    df['date'] = pd.to_datetime(df['date'])
+                    df_weighted_ma = pd.DataFrame(ma_data)
+                    df_weighted_ma['date'] = pd.to_datetime(df_weighted_ma['date'])
+        except Exception as e:
+            print(f"Cache read error: {e}")
+
+    if df is None or df_weighted_ma is None or all_party_columns is None:
+        df, all_party_columns = load_and_preprocess_data()
+        df = filter_data(df, all_party_columns)
+        df_weighted_ma = calculate_weighted_ma(df)
         if redis_client:
             try:
-                metadata = get_from_redis(redis_client, 'polls:metadata')
-                if metadata:
-                    all_party_columns = set(metadata['party_columns'])
-                    raw_data = get_from_redis(redis_client, 'polls:raw_data')
-                    ma_data = get_from_redis(redis_client, 'polls:ma_data')
-                    if raw_data and ma_data:
-                        df = pd.DataFrame(raw_data)
-                        df['date'] = pd.to_datetime(df['date'])
-                        df_weighted_ma = pd.DataFrame(ma_data)
-                        df_weighted_ma['date'] = pd.to_datetime(df_weighted_ma['date'])
+                metadata = {'party_columns': list(all_party_columns), 'last_update': datetime.now().isoformat()}
+                store_in_redis(redis_client, 'polls:metadata', metadata, 86400)
+                store_in_redis(redis_client, 'polls:raw_data', convert_df_to_cacheable(df), 3600)
+                store_in_redis(redis_client, 'polls:ma_data', convert_df_to_cacheable(df_weighted_ma), 3600)
             except Exception as e:
-                print(f"Cache read error: {e}")
+                print(f"Cache write error: {e}")
 
-        if df is None or df_weighted_ma is None or all_party_columns is None:
-            df, all_party_columns = load_and_preprocess_data()
-            df = filter_data(df, all_party_columns)
-            df_weighted_ma = calculate_weighted_ma(df)
-            if redis_client:
-                try:
-                    metadata = {'party_columns': list(all_party_columns), 'last_update': datetime.now().isoformat()}
-                    store_in_redis(redis_client, 'polls:metadata', metadata, 86400)
-                    store_in_redis(redis_client, 'polls:raw_data', convert_df_to_cacheable(df), 3600)
-                    store_in_redis(redis_client, 'polls:ma_data', convert_df_to_cacheable(df_weighted_ma), 3600)
-                except Exception as e:
-                    print(f"Cache write error: {e}")
+    latest_date = df_weighted_ma['date'].max()
+    latest_values = df_weighted_ma.iloc[-1]
+    dates = df['date'].dt.strftime('%Y-%m-%d').tolist()
+    today_str = datetime.now().strftime('%d/%m/%Y')
+    party_config = PARTY_CONFIG
+    datasets = prepare_chart_datasets(df, df_weighted_ma, dates, party_config)
 
-        latest_date = df_weighted_ma['date'].max()
-        latest_values = df_weighted_ma.iloc[-1]
-        dates = df['date'].dt.strftime('%Y-%m-%d').tolist()
-        today_str = datetime.now().strftime('%d/%m/%Y')
-        party_config = PARTY_CONFIG
-        datasets = prepare_chart_datasets(df, df_weighted_ma, dates, party_config)
-
-        coalition_data = {}
-        for date in df_weighted_ma['date']:
-            row = df_weighted_ma[df_weighted_ma['date'] == date].iloc[0]
-            for coalition, config in COALITION_CONFIG.items():
-                value = sum(row[f'{party}_MA'] for party in config['parties'] if f'{party}_MA' in row)
-                if coalition not in coalition_data:
-                    coalition_data[coalition] = []
-                coalition_data[coalition].append(round(value, 1))
-
-        coalition_datasets = []
+    # Calculate coalition values
+    coalition_data = {}
+    for date in df_weighted_ma['date']:
+        row = df_weighted_ma[df_weighted_ma['date'] == date].iloc[0]
         for coalition, config in COALITION_CONFIG.items():
-            coalition_datasets.append({
-                'label': coalition, 'data': coalition_data[coalition],
-                'borderColor': config['color'], 'backgroundColor': config['color'],
-                'borderWidth': 2, 'tension': 0.4, 'fill': False, 'pointRadius': 0
-            })
+            value = sum(row[f'{party}_MA'] for party in config['parties'] if f'{party}_MA' in row)
+            if coalition not in coalition_data:
+                coalition_data[coalition] = []
+            coalition_data[coalition].append(round(value, 1))
 
-        latest_coalition_values = {}
-        latest_row = df_weighted_ma.iloc[-1]
-        for coalition, config in COALITION_CONFIG.items():
-            value = sum(latest_row[f'{party}_MA'] for party in config['parties'] if f'{party}_MA' in latest_row)
-            latest_coalition_values[coalition] = round(value, 1)
+    coalition_datasets = []
+    for coalition, config in COALITION_CONFIG.items():
+        coalition_datasets.append({
+            'label': coalition, 'data': coalition_data[coalition],
+            'borderColor': config['color'], 'backgroundColor': config['color'],
+            'borderWidth': 2, 'tension': 0.4, 'fill': False, 'pointRadius': 0
+        })
 
-        return Html(
-            Head(
-                Meta(charset="UTF-8"),
-                Meta(name="viewport", content="width=device-width, initial-scale=1.0"),
-                Meta(name="description", content="Sondaggi politici italiani aggiornati quotidianamente. Media ponderata dei sondaggi e analisi delle tendenze elettorali in Italia."),
-                Meta(name="keywords", content="sondaggi politici, sondaggi elettorali, media sondaggi, politica italiana, intenzioni di voto"),
-                Meta(name="robots", content="index, follow"),
-                Meta(http_equiv="content-language", content="it"),
-                Meta(property="og:title", content="Sondaggi Nazionali | Media Sondaggi Politici Italiani"),
-                Meta(property="og:description", content="Media ponderata dei sondaggi politici italiani aggiornata quotidianamente. Analisi delle tendenze elettorali in Italia."),
-                Meta(property="og:image", content="https://sondagginazionali.it/static/og-image.png"),
-                Meta(property="og:url", content="https://sondagginazionali.it"),
-                Meta(property="og:type", content="website"),
-                Meta(name="twitter:card", content="summary_large_image"),
-                Meta(name="twitter:site", content="@ruggsea"),
-                Meta(name="twitter:title", content="Sondaggi Nazionali | Media Sondaggi Politici Italiani"),
-                Meta(name="twitter:description", content="Media ponderata dei sondaggi politici italiani aggiornata quotidianamente."),
-                Meta(name="twitter:image", content="https://sondagginazionali.it/static/og-image.png"),
-                Link(rel="canonical", href="https://www.sondagginazionali.it"),
-                Title("Sondaggi Nazionali | Media Sondaggi Politici Italiani"),
-                Link(rel="icon", type="image/png", href="/static/favicon.png"),
-                Link(rel="stylesheet", href="/static/styles.css"),
-                Link(rel="stylesheet", href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"),
-            ),
-            Body(
+    latest_coalition_values = {}
+    latest_row = df_weighted_ma.iloc[-1]
+    for coalition, config in COALITION_CONFIG.items():
+        value = sum(latest_row[f'{party}_MA'] for party in config['parties'] if f'{party}_MA' in latest_row)
+        latest_coalition_values[coalition] = round(value, 1)
+
+    return Html(
+        Head(
+            Meta(charset="UTF-8"),
+            Meta(name="viewport", content="width=device-width, initial-scale=1.0"),
+            Meta(name="description", content="Sondaggi politici italiani aggiornati quotidianamente. Media ponderata dei sondaggi e analisi delle tendenze elettorali in Italia."),
+            Meta(name="keywords", content="sondaggi politici, sondaggi elettorali, media sondaggi, politica italiana, intenzioni di voto"),
+            Meta(name="robots", content="index, follow"),
+            Meta(http_equiv="content-language", content="it"),
+            Meta(property="og:title", content="Sondaggi Nazionali | Media Sondaggi Politici Italiani"),
+            Meta(property="og:description", content="Media ponderata dei sondaggi politici italiani aggiornata quotidianamente. Analisi delle tendenze elettorali in Italia."),
+            Meta(property="og:image", content="https://sondagginazionali.it/static/og-image.png"),
+            Meta(property="og:url", content="https://sondagginazionali.it"),
+            Meta(property="og:type", content="website"),
+            Meta(name="twitter:card", content="summary_large_image"),
+            Meta(name="twitter:site", content="@ruggsea"),
+            Meta(name="twitter:title", content="Sondaggi Nazionali | Media Sondaggi Politici Italiani"),
+            Meta(name="twitter:description", content="Media ponderata dei sondaggi politici italiani aggiornata quotidianamente."),
+            Meta(name="twitter:image", content="https://sondagginazionali.it/static/og-image.png"),
+            Link(rel="canonical", href="https://www.sondagginazionali.it"),
+            Title("Sondaggi Nazionali | Media Sondaggi Politici Italiani"),
+            Link(rel="icon", type="image/png", href="/static/favicon.png"),
+            Link(rel="stylesheet", href="/static/styles.css"),
+            Link(rel="stylesheet", href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"),
+        ),
+        Body(
+            Div(
+                Script(src="https://cdn.jsdelivr.net/npm/chart.js"),
+                Script(src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"),
                 Div(
-                    Script(src="https://cdn.jsdelivr.net/npm/chart.js"),
-                    Script(src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"),
-                    Div(Div(Div(A("Expert Forecasting", href="/forecasting", cls="nav-link"), cls="left-links"),
+                    Div(
+                        Div(A("Expert Forecasting", href="/forecasting", cls="nav-link"), cls="left-links"),
                         A("Sondaggi Nazionali", href="/", cls="nav-brand"),
                         Div(A("About", href="/about", cls="nav-link"), cls="right-links"),
-                        cls="navbar-content"), cls="navbar"),
+                        cls="navbar-content"
+                    ),
+                    cls="navbar"
+                ),
+                Div(
+                    H1("Sondaggi Nazionali", cls="title"),
                     Div(
-                        H1("Sondaggi Nazionali", cls="title"),
+                        Div(Canvas(id="pollChart"), cls="chart-card chart-container"),
                         Div(
-                            Div(Canvas(id="pollChart"), cls="chart-card chart-container"),
-                            Div(P(f"Oggi \u00e8 il {today_str}. La media dei sondaggi \u00e8 la seguente:", cls="summary-title"),
-                                *[Div(Span(f"{party_config[abbr]['name']}:", cls="party-name"),
-                                      Span(f"{latest_values[abbr]:.1f}%", cls="party-value"), cls="party-row") for abbr in party_config],
-                                P(f"Ultimo sondaggio raccolto: {latest_date.strftime('%d/%m/%Y')}", cls="last-update"), cls="summary-card"),
-                            H2("Coalizioni", cls="section-title"),
-                            Div(Canvas(id="coalitionChart"), cls="chart-card chart-container"),
-                            Div(P("Media delle coalizioni:", cls="summary-title"),
-                                *[Div(Span(f"{coalition}:", cls="party-name"),
-                                      Span(f"{value:.1f}%", cls="party-value"), cls="party-row") for coalition, value in latest_coalition_values.items()],
-                                cls="summary-card"),
-                            cls="content"),
-                        Div(P("Sviluppato da Ruggero Marino Lazzaroni", cls="footer-text"),
-                            Div(A(I(cls="fab fa-twitter"), "Twitter", href="https://twitter.com/ruggsea", target="_blank", cls="footer-link"),
-                                A(I(cls="fab fa-linkedin"), "LinkedIn", href="https://www.linkedin.com/in/ruggsea/", target="_blank", cls="footer-link"),
-                                A(I(cls="fas fa-info-circle"), "About", href="/about", cls="footer-link"), cls="footer-links"),
-                            cls="footer"),
-                        cls="container"),
-                    *create_chart_scripts(dates, datasets, coalition_datasets))
+                            P(f"Oggi \u00e8 il {today_str}. La media dei sondaggi \u00e8 la seguente:", cls="summary-title"),
+                            *[Div(Span(f"{party_config[abbr]['name']}:", cls="party-name"),
+                                  Span(f"{latest_values[abbr]:.1f}%", cls="party-value"),
+                                  cls="party-row") for abbr in party_config],
+                            P(f"Ultimo sondaggio raccolto: {latest_date.strftime('%d/%m/%Y')}", cls="last-update"),
+                            cls="summary-card"
+                        ),
+                        H2("Coalizioni", cls="section-title"),
+                        Div(Canvas(id="coalitionChart"), cls="chart-card chart-container"),
+                        Div(
+                            P("Media delle coalizioni:", cls="summary-title"),
+                            *[Div(Span(f"{coalition}:", cls="party-name"),
+                                  Span(f"{value:.1f}%", cls="party-value"),
+                                  cls="party-row") for coalition, value in latest_coalition_values.items()],
+                            cls="summary-card"
+                        ),
+                        cls="content"
+                    ),
+                    Div(
+                        P("Sviluppato da Ruggero Marino Lazzaroni", cls="footer-text"),
+                        Div(
+                            A(I(cls="fab fa-twitter"), "Twitter", href="https://twitter.com/ruggsea", target="_blank", cls="footer-link"),
+                            A(I(cls="fab fa-linkedin"), "LinkedIn", href="https://www.linkedin.com/in/ruggsea/", target="_blank", cls="footer-link"),
+                            A(I(cls="fas fa-info-circle"), "About", href="/about", cls="footer-link"),
+                            cls="footer-links"
+                        ),
+                        cls="footer"
+                    ),
+                    cls="container"
+                ),
+                *create_chart_scripts(dates, datasets, coalition_datasets)
             )
         )
+    )
 
-    @rt('/robots.txt')
-    def get_robots():
-        with open("static/robots.txt", "r") as f:
-            return Response(f.read(), headers={"Content-Type": "text/plain"})
+@rt('/robots.txt')
+def get_robots():
+    with open("static/robots.txt", "r") as f:
+        return Response(f.read(), headers={"Content-Type": "text/plain"})
 
-    @rt('/sitemap.xml')
-    def get_sitemap():
-        with open("static/sitemap.xml", "r") as f:
-            return Response(f.read(), headers={"Content-Type": "application/xml"})
+@rt('/sitemap.xml')
+def get_sitemap():
+    with open("static/sitemap.xml", "r") as f:
+        return Response(f.read(), headers={"Content-Type": "application/xml"})
 
-    serve()
-
-except Exception as e:
-    _init_error = traceback.format_exc()
-    from starlette.applications import Starlette
-    from starlette.responses import PlainTextResponse
-    from starlette.routing import Route
-    def _error_handler(request):
-        return PlainTextResponse(
-            f"Init error:\n{_init_error}\n\nPython: {sys.version}\nCWD: {os.getcwd()}\nFiles: {os.listdir('.')}",
-            status_code=500)
-    app = Starlette(routes=[Route("/{path:path}", _error_handler)])
+serve()
