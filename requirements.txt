@@ -1,5 +1,1 @@
 python-fasthtml
-pandas
-numpy
-python-dateutil
-redis
