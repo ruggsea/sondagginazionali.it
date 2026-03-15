@@ -1,32 +1,46 @@
-from fasthtml.common import *
-import pandas as pd
-from moving_average import calculate_weighted_ma
-import json
+import traceback
+import sys
 import os
 import uuid
-from fasthtml.common import Response
-from fasthtml.common import Head
-from utils.logger import log_visit
-import redis
-import time
-from datetime import datetime, timedelta
-import zlib
 
-# Import configurations and components
-from config.party_config import PARTY_CONFIG, COALITION_CONFIG
-from components.data_processing import (
-    load_and_preprocess_data,
-    filter_data,
-    prepare_chart_datasets
-)
-from components.charts import create_chart_scripts
-from routes.about import register_about_routes
-from routes.forecasting import register_forecasting_routes
+_init_error = None
+try:
+    from fasthtml.common import *
+    import pandas as pd
+    from moving_average import calculate_weighted_ma
+    import json
+    from fasthtml.common import Response
+    from fasthtml.common import Head
+    from utils.logger import log_visit
+    import redis
+    import time
+    from datetime import datetime, timedelta
+    import zlib
 
-# Initialize app with static file support
-app, rt = fast_app(static_path="static", secret_key=os.environ.get("SECRET_KEY", str(uuid.uuid4())))
-register_about_routes(rt)
-register_forecasting_routes(rt)
+    # Import configurations and components
+    from config.party_config import PARTY_CONFIG, COALITION_CONFIG
+    from components.data_processing import (
+        load_and_preprocess_data,
+        filter_data,
+        prepare_chart_datasets
+    )
+    from components.charts import create_chart_scripts
+    from routes.about import register_about_routes
+    from routes.forecasting import register_forecasting_routes
+
+    # Initialize app with static file support
+    app, rt = fast_app(static_path="static", secret_key=os.environ.get("SECRET_KEY", str(uuid.uuid4())))
+    register_about_routes(rt)
+    register_forecasting_routes(rt)
+except Exception as e:
+    _init_error = traceback.format_exc()
+    # Create a minimal ASGI app that reports the error
+    from starlette.applications import Starlette
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Route
+    def _error_handler(request):
+        return PlainTextResponse(f"Init error:\n{_init_error}\n\nPython: {sys.version}\nCWD: {os.getcwd()}\nFiles: {os.listdir('.')}", status_code=500)
+    app = Starlette(routes=[Route("/{path:path}", _error_handler)])
 
 # Replace the caching logic with Redis
 def get_redis_connection():
