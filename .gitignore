@@ -51,12 +51,10 @@ cache/
 # Session secret key
 .sesskey
 
-# Add these lines to .gitignore
+# Data files
 *.json
+!vercel.json
 
-# Add these lines to your .gitignore
+# Logs
 logs/
-*.json
-
-
 
