@@ -24,7 +24,7 @@ from routes.about import register_about_routes
 from routes.forecasting import register_forecasting_routes
 
 # Initialize app with static file support
-app, rt = fast_app(static_path="static", secret_key=os.environ.get("SECRET_KEY", str(uuid.uuid4())))
+app, rt = fast_app(secret_key=os.environ.get("SECRET_KEY", str(uuid.uuid4())))
 register_about_routes(rt)
 register_forecasting_routes(rt)
 
